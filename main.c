@@ -8,8 +8,14 @@ Token* generate_numbers(FILE* file, char first_number) {
     Token* token = malloc(sizeof(*token));
     if (token == NULL) return NULL;
 
+    int capacity = 2;
     int index = 0;
-    char buffer[BUFFER_SIZE] = {0};
+    char* buffer = malloc(sizeof(char) * capacity);
+    if (buffer == NULL) {
+        fprintf(stderr, "Memory allocation failed!\n");
+        free(token);
+        return NULL;
+    }
 
     int has_decimal_point = 0;
     int has_exponent = 0;
@@ -24,6 +30,20 @@ Token* generate_numbers(FILE* file, char first_number) {
             current == 'e' || current == 'E' ||
             current == 'f' || current == 'F' ||
             current == 'd' || current == 'D')) {
+        
+        if (index >= capacity) {
+            capacity *= 2;
+            char* new_buffer = realloc(buffer, sizeof(char) * capacity);
+            
+            if (new_buffer == NULL) {
+                fprintf(stderr, "Memory reallocation failed!\n");
+                free(buffer);
+                free(token);
+                return NULL;
+            }
+
+            buffer = new_buffer;
+        }
 
         if (current == '.') {
             if (has_decimal_point) break;
@@ -67,6 +87,20 @@ Token* generate_numbers(FILE* file, char first_number) {
         current = fgetc(file);
     }
 
+    if (index >= capacity) {
+        capacity++;
+        char* new_buffer = realloc(buffer, sizeof(char) * capacity);
+            
+        if (new_buffer == NULL) {
+            fprintf(stderr, "Memory reallocation failed!\n");
+            free(buffer);
+            free(token);
+            return NULL;
+        }
+
+        buffer = new_buffer;
+    }
+
     buffer[index] = '\0';
     
 
@@ -105,6 +139,71 @@ Token* generate_numbers(FILE* file, char first_number) {
 
     if (errno == ERANGE) {
         fprintf(stderr, "Number out of range: %s\n", buffer);
+        free(token);
+        return NULL;
+    }
+
+    return token;
+}
+
+
+Token* generate_string(FILE* file, char first_letter) {
+    if (first_letter == EOF) return NULL;
+
+    Token* token = malloc(sizeof(*token));
+    if (token == NULL) return NULL;
+
+    int capacity = 3;
+    int index = 0;
+    char* buffer = malloc(sizeof(char) * capacity);
+
+    if (buffer == NULL) {
+        fprintf(stderr, "Memory allocation failed!\n");
+        free(token);
+        return NULL;
+    }
+
+    buffer[index++] = first_letter;
+
+    char current = fgetc(file);
+    while (current != EOF && current != '"') {
+        if (index >= capacity) {
+            capacity *= 2;
+            char* new_buffer = realloc(buffer, sizeof(char) * capacity);
+
+            if (new_buffer == NULL) {
+                fprintf(stderr, "Memory reallocation failed!\n");
+                free(buffer);
+                free(token);
+                return NULL;
+            }
+
+            buffer = new_buffer;
+        }
+
+        buffer[index++] = current;
+        current = fgetc(file);
+    }
+
+    if (index >= capacity) {
+        capacity++;
+        char* new_buffer = realloc(buffer, sizeof(char) * capacity);
+
+        if (new_buffer == NULL) {
+            fprintf(stderr, "Memory reallocation failed!\n");
+            free(buffer);
+            free(token);
+            return NULL;
+        }
+    }
+
+    buffer[index++] = current;
+    buffer[index] = '\0';
+    
+    if (buffer != NULL) {
+        token->type = TOKEN_STRING_LITERAL;
+        token->value.string_value = strdup(buffer);
+    } else {
         free(token);
         return NULL;
     }
@@ -318,6 +417,14 @@ TokenStream* lexer(FILE* file) {
         if (isspace(current)) {
             current = fgetc(file);
             continue;
+
+        } else if (current == '"') {
+            Token* token_string = generate_string(file, current);
+
+            if (token_string != NULL) {
+                add_tokens_to_stream(stream, token_string);
+                printf("FOUND A STRING: %s\n", token_string->value.string_value);
+            }
 
         } else if (current == '#') {
             Token* token_preprocessor = generate_preprocessor(file, current);

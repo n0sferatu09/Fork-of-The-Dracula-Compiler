@@ -240,34 +240,277 @@ The Dracula Compiler (пока что только лексер) - https://githu
 **Результат после исправления**: Прошёл, теперь можно вписывать идентификаторы любой длины, пока память не кончится)))
 
 
-### Тест: [Название, напр. "Проверка ввода данных"]
+### Тест: Проверка на переполнения в случае чисел
 
-**Описание теста**: [Что проверяем, напр. "Обработка положительных чисел"]
+**Описание теста**: Происходит ли переполнение массива в случае, если пользователь впишет определенное число символов(64)
 
 **Шаги**:
-1. [Шаг 1, напр. "Запустить ПО"]
-2. [Шаг 2, напр. "Ввести число и проверить вывод"]
-3. [И т.д.]
+1. Вписать в компилируемый файл длинное число.
+2. Скомпилировать.
+3. Происходит ли переполнение?
 
-**Результат до исправления**: [Прошёл/Не прошёл + описание, напр. "Не прошёл: неверный вывод"]
+**Результат до исправления**: Не прошел, переполнение происходит после 64 символа.
 
 **Код до исправления** (если применимо):
-```js
-// Вставьте фрагмент кода с багом
+```C
+    int index = 0;
+    char buffer[BUFFER_SIZE] = {0};
+
+    int has_decimal_point = 0;
+    int has_exponent = 0;
+    int has_float_suffix = 0;
+
+    token->type = TOKEN_INT;
+    buffer[index++] = first_number;
+
+    char current = fgetc(file);
+    while (current != EOF && (isdigit(current) ||
+            current == '.' ||
+            current == 'e' || current == 'E' ||
+            current == 'f' || current == 'F' ||
+            current == 'd' || current == 'D')) {
+
+        if (current == '.') {
+            if (has_decimal_point) break;
+
+            has_decimal_point = 1;
+            token->type = TOKEN_DOUBLE;
+        } 
+        
+        if (current == 'e' || current == 'E') {
+            if (has_exponent) break;
+
+            has_exponent = 1;
+            token->type = TOKEN_DOUBLE;
+
+            current = fgetc(file);
+            if (current != EOF && (current == '+' || current == '-')) {
+                char sign = current;
+                current = fgetc(file);
+
+                if (isdigit(current)) {
+                    buffer[index++] = sign;
+                    buffer[index++] = current;
+                } else {
+                    ungetc(current, file);
+                    ungetc(sign, file);
+                    fprintf(stderr, "Invalid Exponent: missing digits\n");
+                    free(token);
+                    return NULL;
+                }
+            }
+        }
+
+        if (current == 'f' || current == 'F') {
+            if (has_float_suffix) break;
+
+            has_float_suffix = 1;
+            token->type = TOKEN_FLOAT;
+        }
+
+        buffer[index++] = current;
+        current = fgetc(file);
+    }
+
+    buffer[index] = '\0';
+
+```
+
+**Исправление** (если применимо): Как и в прошлом тесте, добавил динамический массив для решения трех багов сразу.
+
+**Код после исправления** (если применимо):
+```C
+    int capacity = 2;
+    int index = 0;
+    char* buffer = malloc(sizeof(char) * capacity);
+    if (buffer == NULL) {
+        fprintf("Memory allocation failed!\n");
+        free(token);
+        return NULL;
+    }
+
+    int has_decimal_point = 0;
+    int has_exponent = 0;
+    int has_float_suffix = 0;
+
+    token->type = TOKEN_INT;
+    buffer[index++] = first_number;
+
+    char current = fgetc(file);
+    while (current != EOF && (isdigit(current) ||
+            current == '.' ||
+            current == 'e' || current == 'E' ||
+            current == 'f' || current == 'F' ||
+            current == 'd' || current == 'D')) {
+        
+        if (index >= capacity) {
+            capacity *= 2;
+            char* new_buffer = realloc(buffer, sizeof(char) * capacity);
+            
+            if (new_buffer == NULL) {
+                fprintf("Memory reallocation failed!\n");
+                free(buffer);
+                free(token);
+                return NULL;
+            }
+
+            buffer = new_buffer;
+        }
+
+        if (current == '.') {
+            if (has_decimal_point) break;
+
+            has_decimal_point = 1;
+            token->type = TOKEN_DOUBLE;
+        } 
+        
+        if (current == 'e' || current == 'E') {
+            if (has_exponent) break;
+
+            has_exponent = 1;
+            token->type = TOKEN_DOUBLE;
+
+            current = fgetc(file);
+            if (current != EOF && (current == '+' || current == '-')) {
+                char sign = current;
+                current = fgetc(file);
+
+                if (isdigit(current)) {
+                    buffer[index++] = sign;
+                    buffer[index++] = current;
+                } else {
+                    ungetc(current, file);
+                    ungetc(sign, file);
+                    fprintf(stderr, "Invalid Exponent: missing digits\n");
+                    free(token);
+                    return NULL;
+                }
+            }
+        }
+
+        if (current == 'f' || current == 'F') {
+            if (has_float_suffix) break;
+
+            has_float_suffix = 1;
+            token->type = TOKEN_FLOAT;
+        }
+
+        buffer[index++] = current;
+        current = fgetc(file);
+    }
+
+    if (index >= capacity) {
+        capacity++;
+        char* new_buffer = realloc(buffer, sizeof(char) * capacity);
+            
+        if (new_buffer == NULL) {
+            fprintf("Memory reallocation failed!\n");
+            free(buffer);
+            free(token);
+            return NULL;
+        }
+
+        buffer = new_buffer;
+    }
+
+    buffer[index] = '\0';
+```
+
+**Результат после исправления**: Прошёл, вроде работает.
+
+
+### Тест: Строки
+
+**Описание теста**: Генерирует ли лексер строковые литералы.
+
+**Шаги**:
+1. Написать в компилируемый файл строку, которая находится между двух '"'.
+2. Скомпилировать.
+3. Генерирует ли строки?
+
+**Результат до исправления**: Не прошел, лексер видит строки как 2 токена оператора '"' и индектификаторы, по-мимо этого, из-за того, что мы можем засунуть в строку оператор то происходит так, что функция генерации этих самых операторов работает не очень корректно. Например, если мы напишем printf(">>=");, то лексер выведет:
+FOUND A IDENTIFIER: printf
+FOUND A OPERATOR: (
+FOUND A OPERATOR: "
+UNKNOWN OPERATOR:>>=");
+
+**Код до исправления** (если применимо):
+``` C
+// Тут ничего нет
 ```
 
 **Исправление** (если применимо): [Опишите изменения]
 
 **Код после исправления** (если применимо):
-```js
-// Вставьте исправленный код
+```C
+Token* generate_string(FILE* file, char first_letter) {
+    if (first_letter == EOF) return NULL;
+
+    Token* token = malloc(sizeof(*token));
+    if (token == NULL) return NULL;
+
+    int capacity = 3;
+    int index = 0;
+    char* buffer = malloc(sizeof(char) * capacity);
+
+    if (buffer == NULL) {
+        fprintf(stderr, "Memory allocation failed!\n");
+        free(token);
+        return NULL;
+    }
+
+    buffer[index++] = first_letter;
+
+    char current = fgetc(file);
+    while (current != EOF && current != '"') {
+        if (index >= capacity) {
+            capacity *= 2;
+            char* new_buffer = realloc(buffer, sizeof(char) * capacity);
+
+            if (new_buffer == NULL) {
+                fprintf(stderr, "Memory reallocation failed!\n");
+                free(buffer);
+                free(token);
+                return NULL;
+            }
+
+            buffer = new_buffer;
+        }
+
+        buffer[index++] = current;
+        current = fgetc(file);
+    }
+
+    if (index >= capacity) {
+        capacity++;
+        char* new_buffer = realloc(buffer, sizeof(char) * capacity);
+
+        if (new_buffer == NULL) {
+            fprintf(stderr, "Memory reallocation failed!\n");
+            free(buffer);
+            free(token);
+            return NULL;
+        }
+    }
+
+    buffer[index++] = current;
+    buffer[index] = '\0';
+    
+    if (buffer != NULL) {
+        token->type = TOKEN_STRING_LITERAL;
+        token->value.string_value = strdup(buffer);
+    } else {
+        free(token);
+        return NULL;
+    }
+
+    return token;
+}
 ```
 
-**Результат после исправления**: [Прошёл/Не прошёл + описание]
+**Результат после исправления**: Прошёл, теперь генерирует строки и не мешает функции для генерации операций.
+
 
 
 ## Процесс исправления
-[Описание]
 
-## Вклад участников
-- Иванов И.И.: Тестирование.
