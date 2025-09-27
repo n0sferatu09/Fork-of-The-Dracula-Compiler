@@ -1,1 +1,7 @@
-12345678901234567890123456789
+#include <stdio.h>
+
+int main() {
+    printf("Hello World!"); /* hello world */
+
+    return 0;
+}

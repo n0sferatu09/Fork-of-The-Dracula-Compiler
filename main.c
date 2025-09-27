@@ -147,7 +147,16 @@ Token* generate_numbers(FILE* file, char first_number) {
 }
 
 
-Token* generate_string(FILE* file, char first_letter) {
+void skip_comments(FILE* file) {
+    char current = fgetc(file);
+    while (current != EOF && current != '\n') {
+
+        current = fgetc(file);
+    }
+}
+
+
+Token* generate_strings(FILE* file, char first_letter) {
     if (first_letter == EOF) return NULL;
 
     Token* token = malloc(sizeof(*token));
@@ -410,7 +419,7 @@ Token* generate_punctuators(FILE* file, char first_char) {
 
 TokenStream* lexer(FILE* file) {
     TokenStream* stream = init_tokens_stream();
-    char current;
+    int current;
     current = fgetc(file);
     
     while (current != EOF) {
@@ -418,8 +427,10 @@ TokenStream* lexer(FILE* file) {
             current = fgetc(file);
             continue;
 
+        } else if (current == '/') {
+
         } else if (current == '"') {
-            Token* token_string = generate_string(file, current);
+            Token* token_string = generate_strings(file, current);
 
             if (token_string != NULL) {
                 add_tokens_to_stream(stream, token_string);
